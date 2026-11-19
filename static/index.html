@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Конспектувач — конспект лекції за хвилину</title>
+<style>
+  :root { --ink:#1d1d1b; --muted:#6b6a64; --line:#e4e2da; --bg:#faf9f6; --card:#fff; --accent:#2a5bd7; --accent-ink:#fff; --err:#b3261e; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--ink); background:var(--bg); }
+  main { max-width:860px; margin:0 auto; padding:40px 20px 80px; }
+  h1 { font-size:30px; margin:0 0 4px; letter-spacing:-.01em; }
+  .lead { color:var(--muted); margin:0 0 28px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; }
+  textarea { width:100%; min-height:230px; resize:vertical; border:1px solid var(--line); border-radius:8px; padding:12px; font:inherit; background:#fff; }
+  textarea:focus, input:focus { outline:2px solid var(--accent); outline-offset:1px; }
+  .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:12px; }
+  .row .spacer { flex:1; }
+  button, .file { font:inherit; border-radius:8px; padding:9px 16px; border:1px solid var(--line); background:#fff; color:var(--ink); cursor:pointer; }
+  button.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:600; }
+  button:disabled { opacity:.55; cursor:progress; }
+  .file input { display:none; }
+  input[type=password] { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; width:150px; }
+  .count { color:var(--muted); font-size:14px; }
+  .error { color:var(--err); margin-top:12px; }
+  #result { margin-top:28px; }
+  #result h2 { font-size:24px; margin:0 0 8px; }
+  #result h3 { font-size:15px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:24px 0 8px; }
+  #result ul, #result ol { margin:0; padding-left:22px; }
+  #result li { margin:4px 0; }
+  dl { margin:0; display:grid; grid-template-columns:minmax(120px,max-content) 1fr; gap:6px 16px; }
+  dt { font-weight:600; } dd { margin:0; }
+  .meta { color:var(--muted); font-size:13px; margin-top:20px; border-top:1px solid var(--line); padding-top:10px; }
+  .spinner { display:inline-block; width:14px; height:14px; border:2px solid #fff; border-right-color:transparent; border-radius:50%; animation:spin .7s linear infinite; vertical-align:-2px; margin-right:6px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Конспектувач</h1>
+  <p class="lead">Вставте текст лекції — Claude складе конспект: суть, головні тези, терміни й питання для самоперевірки.</p>
+
+  <div class="card">
+    <textarea id="text" placeholder="Текст лекції, розшифровка запису або розділ підручника…"></textarea>
+    <div class="row">
+      <label class="file">Завантажити .txt<input type="file" id="file" accept=".txt,.md,text/plain"></label>
+      <button id="sample" type="button">Приклад</button>
+      <span class="count" id="count">0 символів</span>
+      <span class="spacer"></span>
+      <input type="password" id="code" placeholder="Код доступу" title="Потрібен, якщо власник сервісу його задав">
+      <button class="primary" id="go" type="button">Скласти конспект</button>
+    </div>
+    <div class="error" id="err" role="alert"></div>
+  </div>
+
+  <section id="result" aria-live="polite"></section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const MAX = 20000;
+const SAMPLE = `Алгоритм Дейкстри розв'язує задачу пошуку найкоротших шляхів від однієї вершини до всіх інших у графі з невід'ємними вагами ребер. Ідея полягає в жадібному виборі: на кожному кроці береться ще не оброблена вершина з найменшою поточною відстанню, її відстань вважається остаточною, і через неї оновлюються (релаксуються) відстані до сусідів. Релаксація ребра (u, v) з вагою w означає перевірку, чи не коротший шлях до v через u: якщо d[u] + w < d[v], то d[v] оновлюється. Щоб швидко знаходити вершину з мінімальною відстанню, використовують чергу з пріоритетами, наприклад бінарну купу; тоді складність становить O((V + E) log V). Для графів з від'ємними вагами алгоритм некоректний — у такому разі застосовують алгоритм Беллмана–Форда. Паралелізація Дейкстри для одного джерела складна, бо кроки залежать один від одного; натомість задачу пошуку шляхів з багатьох джерел легко розподілити між вузлами кластера.`;
+
+function updateCount() {
+  const n = $('text').value.length;
+  $('count').textContent = `${n.toLocaleString('uk-UA')} / ${MAX.toLocaleString('uk-UA')} символів`;
+  $('count').style.color = n > MAX ? 'var(--err)' : '';
+}
+$('text').addEventListener('input', updateCount);
+$('sample').onclick = () => { $('text').value = SAMPLE; updateCount(); };
+$('file').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  $('text').value = await f.text(); updateCount();
+};
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function render(data) {
+  const n = data.notes, m = data.meta;
+  $('result').innerHTML = `
+    <div class="card">
+      <h2>${esc(n.title)}</h2>
+      <p>${esc(n.summary)}</p>
+      <h3>Головні тези</h3>
+      <ul>${n.key_points.map(p => `<li>${esc(p)}</li>`).join('')}</ul>
+      <h3>Терміни</h3>
+      <dl>${n.terms.map(t => `<dt>${esc(t.term)}</dt><dd>${esc(t.definition)}</dd>`).join('')}</dl>
+      <h3>Питання для самоперевірки</h3>
+      <ol>${n.questions.map(q => `<li>${esc(q)}</li>`).join('')}</ol>
+      <div class="row"><button id="copy" type="button">Копіювати як Markdown</button></div>
+      <div class="meta">Модель ${esc(m.model)} · ${m.input_tokens} вхідних і ${m.output_tokens} вихідних токенів · ${m.seconds} с</div>
+    </div>`;
+  $('copy').onclick = () => {
+    const md = `# ${n.title}\n\n${n.summary}\n\n## Головні тези\n${n.key_points.map(p => `- ${p}`).join('\n')}\n\n## Терміни\n${n.terms.map(t => `- **${t.term}** — ${t.definition}`).join('\n')}\n\n## Питання\n${n.questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n`;
+    navigator.clipboard.writeText(md).then(() => { $('copy').textContent = 'Скопійовано'; });
+  };
+}
+
+$('go').onclick = async () => {
+  const text = $('text').value.trim();
+  $('err').textContent = '';
+  if (text.length < 50) { $('err').textContent = 'Додайте хоча б кілька речень тексту.'; return; }
+  if (text.length > MAX) { $('err').textContent = `Текст задовгий: максимум ${MAX} символів.`; return; }
+  const btn = $('go');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Claude думає…';
+  try {
+    const r = await fetch('/api/notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Access-Code': $('code').value },
+      body: JSON.stringify({ text })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || `Помилка ${r.status}`);
+    render(data);
+  } catch (e) {
+    $('err').textContent = typeof e.message === 'string' ? e.message : 'Не вдалося отримати конспект';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Скласти конспект';
+  }
+};
+updateCount();
+</script>
+</body>
+</html>
