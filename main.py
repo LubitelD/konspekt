@@ -66,6 +66,36 @@ class NotesRequest(BaseModel):
     text: str = Field(..., min_length=50)
 
 
+def clean_notes(n: dict) -> dict:
+    """Нормалізує відповідь моделі: модель зрідка відходить від схеми (напр. термін рядком)."""
+    def strs(x):
+        return [s.strip() for s in x if isinstance(s, str) and s.strip()] if isinstance(x, list) else []
+
+    terms = []
+    for t in n.get("terms") or []:
+        term = definition = ""
+        if isinstance(t, dict):
+            term = str(t.get("term") or t.get("name") or "").strip()
+            definition = str(t.get("definition") or t.get("description") or "").strip()
+            if not term and len(t) == 1:
+                (term, definition), = ((str(k), str(v)) for k, v in t.items())
+        elif isinstance(t, str):
+            for sep in (" — ", " – ", " - ", ": "):
+                if sep in t:
+                    term, definition = (p.strip() for p in t.split(sep, 1))
+                    break
+        if term and definition:
+            terms.append({"term": term, "definition": definition})
+
+    return {
+        "title": str(n.get("title") or "Конспект").strip(),
+        "summary": str(n.get("summary") or "").strip(),
+        "key_points": strs(n.get("key_points")),
+        "terms": terms,
+        "questions": strs(n.get("questions")),
+    }
+
+
 @app.get("/")
 def index():
     return FileResponse("static/index.html")
@@ -105,7 +135,7 @@ def make_notes(req: NotesRequest, request: Request):
     if notes is None:
         raise HTTPException(502, "Модель не повернула конспект")
     return {
-        "notes": notes,
+        "notes": clean_notes(notes),
         "meta": {
             "model": msg.model,
             "input_tokens": msg.usage.input_tokens,
